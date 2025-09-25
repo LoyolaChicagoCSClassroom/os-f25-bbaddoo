@@ -50,8 +50,8 @@ void putc(int data) {
         cursor_offset += 2;
     }
 
-    if (cursor_offset >= SCREEN_WIDTH + SCREEN_HEIGHT * 2) {
-        scroll_screen;
+    if (cursor_offset >= SCREEN_WIDTH * SCREEN_HEIGHT * 2) {
+        scroll_screen();
     }
 }
 
