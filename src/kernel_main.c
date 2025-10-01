@@ -73,10 +73,14 @@ void init_terminal(void) {
 //entry point and initilize terminal to print
 void main() {
     init_terminal();
-    putc('h');
-    putc('i');      
+
+    for (int i = 0; i < 2048; i++) {
+        putc('c');
+        putc('z');
+        for (int j = 0; j < 204800; j++) {
+        }
+    }
 
     while(1) {
-        
-}
+    }
 }
