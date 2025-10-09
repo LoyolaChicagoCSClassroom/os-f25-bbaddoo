@@ -1,11 +1,13 @@
-#include "rprintf.h"
 
+#include "rprintf.h"
+#include <stdint.h>
 #define VIDEO_MEMORY 0xB8000 //starting address
 #define SCREEN_WIDTH 80 //colums
 #define SCREEN_HEIGHT 25  //rows
 #define COLOR 0x07   //light gray color
 
-#define MULTIBOOT2_HEADER_MAGIC 0xe85250d6 
+#define MULTIBOOT2_HEADER_MAGIC 0xe85250d6
+#define KEYBOARD_PORT 0X60 
 
 const unsigned int multiboot_header[] __attribute__((section(".multiboot"))) = {MULTIBOOT2_HEADER_MAGIC, 0, 16, -(16+MULTIBOOT2_HEADER_MAGIC), 0, 12}; 
 
@@ -67,20 +69,93 @@ void init_terminal(void) {
     }
     cursor_offset = 0;
 
-    esp_printf(putc, "Current execution: %d\r\n" , get_execution());
+    
 }
+
+unsigned char keyboard_map[128] =
+{
+   0,  27, '1', '2', '3', '4', '5', '6', '7', '8',     /* 9 */
+ '9', '0', '-', '=', '\b',     /* Backspace */
+ '\t',                 /* Tab */
+ 'q', 'w', 'e', 'r',   /* 19 */
+ 't', 'y', 'u', 'i', 'o', 'p', '[', ']', '\n', /* Enter key */
+   0,                  /* 29   - Control */
+ 'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', ';',     /* 39 */
+'\'', '`',   0,                /* Left shift */
+'\\', 'z', 'x', 'c', 'v', 'b', 'n',                    /* 49 */
+ 'm', ',', '.', '/',   0,                              /* Right shift */
+ '*',
+   0,  /* Alt */
+ ' ',  /* Space bar */
+   0,  /* Caps lock */
+   0,  /* 59 - F1 key ... > */
+   0,   0,   0,   0,   0,   0,   0,   0,  
+   0,  /* < ... F10 */
+   0,  /* 69 - Num lock*/
+   0,  /* Scroll Lock */
+   0,  /* Home key */
+   0,  /* Up Arrow */
+   0,  /* Page Up */
+ '-',
+   0,  /* Left Arrow */
+   0,  
+   0,  /* Right Arrow */
+ '+',
+   0,  /* 79 - End key*/
+   0,  /* Down Arrow */
+   0,  /* Page Down */
+   0,  /* Insert Key */
+   0,  /* Delete Key */
+   0,   0,   0,  
+   0,  /* F11 Key */
+   0,  /* F12 Key */
+   0,  /* All other keys are undefined */
+};
+
+unsigned char read_scancode() {
+    unsigned char scancode;
+    __asm__ __volatile__("inb %1, %0" : "=a"(scancode) : "Nd"(KEYBOARD_PORT));
+    return scancode;
+}
+
+unsigned char read_status() {
+    unsigned char status;
+    __asm__ __volatile__("inb %1, %0" : "=a"(status) : "Nd"(0x64));
+    return status;
+}
+
+void keyboard_handler(unsigned char scancode) {
+     static unsigned char last_scancode = 0;
+
+    if(scancode & 0x80) {
+       last_scancode = 0;
+       return;
+}
+    if(scancode == last_scancode) {
+       return;
+}
+unsigned char ch = keyboard_map[scancode];
+
+   if(ch) {
+
+     esp_printf(putc, "0x%02x %c\r\n", scancode, ch);
+   } else {
+       esp_printf(putc, "0x%02x [unknown]\r\n", scancode);
+}
+}
+
 
 //entry point and initilize terminal to print
 void main() {
     init_terminal();
 
-    for (int i = 0; i < 2048; i++) {
-        putc('c');
-        putc('z');
-        for (int j = 0; j < 204800; j++) {
-        }
-    }
-
     while(1) {
-    }
+        if(read_status() & 1) {
+ 
+        unsigned char scancode = read_scancode(); 
+
+        keyboard_handler(scancode); 
 }
+}
+}
+
