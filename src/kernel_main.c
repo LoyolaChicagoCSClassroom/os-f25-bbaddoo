@@ -1,6 +1,7 @@
 
 #include "rprintf.h"
 #include <stdint.h>
+#include "page.h"
 #define VIDEO_MEMORY 0xB8000 //starting address
 #define SCREEN_WIDTH 80 //colums
 #define SCREEN_HEIGHT 25  //rows
@@ -148,6 +149,27 @@ unsigned char ch = keyboard_map[scancode];
 //entry point and initilize terminal to print
 void main() {
     init_terminal();
+    esp_printf(putc,"the terminal is initialized.\r\n");
+
+    esp_printf(putc, "initializing the page frame allocator..\r\n");
+    init_pfa_list();
+    esp_printf(putc, "the page frame allocator is ready.\r\n"); 
+
+    struct ppage *allocated = allocate_physical_pages(2); 
+    esp_printf(putc, "allocated 2 pages starting at the address 0x%x\r\n", allocated->physical_addr);
+
+    struct ppage *curr = allocated; 
+    int i = 1; 
+    while (curr) { 
+        esp_printf(putc, "Page %d: address 0x%lx\r\n", 
+                   i, (unsigned long)curr->physical_addr); 
+        curr = curr->next; 
+        i++;
+     }
+
+    return_physical_pages(allocated); 
+    esp_printf(putc, "freed the pages back to free list.\r\n"); 
+
 
     while(1) {
         if(read_status() & 1) {
