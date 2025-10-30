@@ -2,6 +2,7 @@
 #include "rprintf.h"
 #include <stdint.h>
 #include "page.h"
+#include "mmu.h"
 #define VIDEO_MEMORY 0xB8000 //starting address
 #define SCREEN_WIDTH 80 //colums
 #define SCREEN_HEIGHT 25  //rows
@@ -145,7 +146,57 @@ unsigned char ch = keyboard_map[scancode];
 }
 }
 
+struct page_directory_entry pd[1024] __attribute__((aligned(4096)));
+struct page pt_tables[1024][1024] __attribute__((aligned(4096))); 
 
+void *map_pages(void *vaddr, struct ppage *pglist, struct page_directory_entry *pd) {
+uint32_t va = (uint32_t)vaddr; 
+uint32_t pd_index = va >> 22; 
+uint32_t pt_index = (va >> 12) & 0x3FF;
+
+if (!pd[pd_index].present) { 
+    pd[pd_index].present = 1; 
+    pd[pd_index].rw = 1; 
+    pd[pd_index].user = 0; 
+    pd[pd_index].frame = ((uint32_t)&pt_tables[pd_index]) >> 12; 
+}
+
+struct page *pt = pt_tables[pd_index]; 
+struct ppage *curr = pglist; 
+int mapped = 0;
+while (curr && mapped < 10) { 
+    pt[pt_index].present = 1; 
+    pt[pt_index].rw = 1; 
+    pt[pt_index].user = 0; 
+    pt[pt_index].frame = ((uint32_t)curr->physical_addr) >> 12; 
+
+esp_printf(putc, "Mapped virtual address: 0x%x -> physical address: 0x%x\r\n", 
+               (pt_index * 0x1000) + (pd_index << 22), 
+               curr->physical_addr); 
+ 
+    curr = curr->next; 
+    pt_index++; 
+    mapped++;
+    if (pt_index >= 1024) break;
+}
+
+return vaddr;
+
+
+}
+
+void loadPageDirectory(struct page_directory_entry *pd) {
+ asm("mov %0, %%cr3" : : "r"(pd));
+ } 
+
+void enable_paging() {
+ asm(
+      "mov %cr0, %eax\n"
+      "or $0x80000001, %eax\n"
+      "mov %eax, %cr0" );
+ }
+
+extern char _end_kernel; 
 //entry point and initilize terminal to print
 void main() {
     init_terminal();
@@ -170,6 +221,27 @@ void main() {
     return_physical_pages(allocated); 
     esp_printf(putc, "freed the pages back to free list.\r\n"); 
 
+    for (uint32_t addr = 0x100000; addr < 0x102000; addr += 0x1000) { 
+        struct ppage tmp; 
+        tmp.next = NULL; 
+        tmp.physical_addr = (void*)addr; 
+        map_pages((void*)addr, &tmp, pd); 
+    } 
+    
+    uint32_t esp;  
+    asm("mov %%esp, %0" : "=r"(esp));  
+    struct ppage tmp_stack;  
+    tmp_stack.next = NULL;  
+    tmp_stack.physical_addr = (void*) (esp & 0xFFFFF000);  
+    map_pages((void*)(esp & 0xFFFFF000), &tmp_stack, pd); 
+    
+    struct ppage tmp_video; 
+    tmp_video.next = NULL; 
+    tmp_video.physical_addr =(void*) VIDEO_MEMORY; 
+    map_pages((void*)VIDEO_MEMORY, &tmp_video, pd); 
+ 
+    loadPageDirectory(pd); 
+    enable_paging();  
 
     while(1) {
         if(read_status() & 1) {
